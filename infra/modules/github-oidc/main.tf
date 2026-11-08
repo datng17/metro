@@ -2,7 +2,10 @@
 # GitHub Actions -> AWS without stored keys.
 #
 # A workflow with `permissions: id-token: write` asks GitHub for a signed OIDC
-# token (aud = sts.amazonaws.com, sub = repo:<owner>/<repo>:ref:refs/heads/<branch>).
+# token (aud = sts.amazonaws.com, sub = <prefix>:ref:refs/heads/<branch>).
+# <prefix> is repo:<owner>/<repo> by default, or the immutable form
+# repo:<owner>@<owner_id>/<repo>@<repo_id> when the repository uses immutable
+# subject claims (see var.github_subject_prefix).
 # aws-actions/configure-aws-credentials exchanges it with
 # sts:AssumeRoleWithWebIdentity for short-lived credentials of a role below.
 #
@@ -14,8 +17,9 @@
 # ---------------------------------------------------------------------------
 locals {
   oidc_host   = "token.actions.githubusercontent.com"
-  deploy_sub  = "repo:${var.github_repository}:ref:refs/heads/${var.deploy_branch}"
-  plan_sub    = "repo:${var.github_repository}:pull_request"
+  sub_prefix  = coalesce(var.github_subject_prefix, "repo:${var.github_repository}")
+  deploy_sub  = "${local.sub_prefix}:ref:refs/heads/${var.deploy_branch}"
+  plan_sub    = "${local.sub_prefix}:pull_request"
   oidc_arn    = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
   oidc_issuer = "https://${local.oidc_host}"
 }

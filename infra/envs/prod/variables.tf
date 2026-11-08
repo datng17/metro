@@ -156,8 +156,20 @@ variable "github_repository" {
   default     = "datng17/metro"
 }
 
+# datng17/metro uses immutable subject claims, so tokens carry
+# sub = repo:<owner>@<owner_id>/<repo>@<repo_id>:... instead of repo:<owner>/<repo>:...
+# Read the current prefix with:
+#   gh api repos/<owner>/<repo>/actions/oidc/customization/sub   (sub_claim_prefix)
+# Trusting the IDs means a deleted and re-created repo with the same name
+# cannot assume the roles. Set to null to trust repo:<github_repository>.
+variable "github_subject_prefix" {
+  description = "OIDC sub prefix the CI/CD roles trust (immutable form repo:<owner>@<owner_id>/<repo>@<repo_id>)."
+  type        = string
+  default     = "repo:datng17@179402133/metro@1446772914"
+}
+
 variable "github_deploy_branch" {
-  description = "Branch whose workflow runs may assume the deploy role (trust subject repo:<repo>:ref:refs/heads/<branch>)."
+  description = "Branch whose workflow runs may assume the deploy role (trust subject <github_subject_prefix>:ref:refs/heads/<branch>)."
   type        = string
   default     = "main-deployment"
 }

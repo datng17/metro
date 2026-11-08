@@ -13,6 +13,17 @@ variable "github_repository" {
   }
 }
 
+variable "github_subject_prefix" {
+  description = "OIDC sub prefix the roles trust, e.g. repo:<owner>@<owner_id>/<repo>@<repo_id> for repositories with immutable subject claims. null = repo:<github_repository>."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = startswith(coalesce(var.github_subject_prefix, "repo:"), "repo:")
+    error_message = "github_subject_prefix must start with \"repo:\"."
+  }
+}
+
 variable "deploy_branch" {
   description = "Only workflow runs on this branch may assume the deploy role."
   type        = string
