@@ -175,16 +175,38 @@ jobs:
           SERVICE: ${{ inputs.ecs_service }}
           CLUSTER: ${{ inputs.ecs_cluster }}
         run: |
-          read -r ACTUAL STATE <<< "$(aws ecs describe-services \
-            --cluster "$CLUSTER" --services "$SERVICE" \
-            --query "services[0].deployments[?status=='PRIMARY'] | [0].[taskDefinition, rolloutState]" \
-            --output text)"
-          echo "Expected: ${EXPECTED}"
-          echo "Primary:  ${ACTUAL} (${STATE})"
-          if [ "$ACTUAL" != "$EXPECTED" ] || [ "$STATE" != "COMPLETED" ]; then
-            echo "::error::Deployment of ${SERVICE} was rolled back by the ECS circuit breaker (or did not complete)."
+          # The stability waiter can return while the PRIMARY rollout is still
+          # IN_PROGRESS (old tasks draining), so poll until it settles.
+          TIMEOUT_MINUTES=15
+          POLL_SECONDS=15
+          DEADLINE=$(( SECONDS + TIMEOUT_MINUTES * 60 ))
+
+          show_events() {
             aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
               --query "services[0].events[0:10].[createdAt, message]" --output table
+          }
+
+          echo "Expected: ${EXPECTED}"
+          while true; do
+            read -r ACTUAL STATE <<< "$(aws ecs describe-services \
+              --cluster "$CLUSTER" --services "$SERVICE" \
+              --query "services[0].deployments[?status=='PRIMARY'] | [0].[taskDefinition, rolloutState]" \
+              --output text)"
+            echo "Primary:  ${ACTUAL} (${STATE})"
+            if [ "$ACTUAL" != "$EXPECTED" ] || [ "$STATE" != "IN_PROGRESS" ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$DEADLINE" ]; then
+              echo "::error::Deployment of ${SERVICE} did not complete within ${TIMEOUT_MINUTES} minutes (rolloutState still IN_PROGRESS)."
+              show_events
+              exit 1
+            fi
+            sleep "$POLL_SECONDS"
+          done
+
+          if [ "$ACTUAL" != "$EXPECTED" ] || [ "$STATE" != "COMPLETED" ]; then
+            echo "::error::Deployment of ${SERVICE} was rolled back by the ECS circuit breaker (or did not complete)."
+            show_events
             exit 1
           fi
           {
