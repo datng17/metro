@@ -1,0 +1,93 @@
+# Profile "aws": values come only from environment variables (ECS task definition / compose).
+# Required: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_HOST, RABBITMQ_HOST, RABBITMQ_USER,
+#           RABBITMQ_PASSWORD, EUREKA_URL, JWT_SECRET_KEY, API_KEY, USER_SERVICE_URL
+# Optional (dummy defaults): SMTP_*, FIREBASE_ENABLED (false)
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:dummy}
+    password: ${SMTP_PASSWORD:dummy}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+  cloud:
+    inetutils:
+      preferred-networks: ${EUREKA_PREFERRED_NETWORKS:10.,172.,192.168.}
+firebase:
+  # FirebaseInitializer only runs when true; it needs firebase-service-account.json on the classpath.
+  enabled: ${FIREBASE_ENABLED:false}
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: ${JWT_EXPIRATION:3600000}
+server:
+  port: 4008
+  servlet:
+    context-path: /api/${app.version}
+app:
+  version: v1
+service:
+  users:
+    url: ${USER_SERVICE_URL}/api/v1/users
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: ${spring.cloud.client.ip-address}
+    hostname: ${spring.cloud.client.hostname}
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+management:
+  health:
+    # The SMTP check would report DOWN with dummy credentials and fail the container health check.
+    mail:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

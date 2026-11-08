@@ -1,0 +1,294 @@
+# Local stack that runs every service on the "aws" Spring profile, configured only through env vars.
+# Usage (PowerShell, repo root):
+#   Copy-Item .env.aws-local.sample .env.aws-local   # then fill in the values
+#   docker compose --env-file .env.aws-local -f docker-compose.aws-local.yml up --build
+name: metro-aws-local
+
+x-spring-common: &spring-common
+  SPRING_PROFILES_ACTIVE: aws
+  EUREKA_URL: http://eureka:8761/eureka/
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env.aws-local}
+  API_KEY: ${API_KEY:?set API_KEY in .env.aws-local}
+
+x-db: &db
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_USER: ${POSTGRES_USER:-metro}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.aws-local}
+
+x-redis: &redis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+
+x-rabbit: &rabbit
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: ${RABBITMQ_USER:-metro}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env.aws-local}
+
+x-app-depends: &app-depends
+  eureka:
+    condition: service_healthy
+
+networks:
+  metro-aws-local:
+    driver: bridge
+
+volumes:
+  pg-data:
+  redis-data:
+  rabbitmq-data:
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-metro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.aws-local}
+      POSTGRES_DB: postgres
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./scripts/aws-local/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    ports:
+      - "${PG_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [metro-aws-local]
+
+  redis:
+    image: redis:7.2
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [metro-aws-local]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-metro}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env.aws-local}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks: [metro-aws-local]
+
+  eureka:
+    build:
+      context: .
+      dockerfile: services/eureka-service/Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: aws
+      EUREKA_HOSTNAME: eureka
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [metro-aws-local]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway-service/Dockerfile
+    environment:
+      <<: [*spring-common, *redis]
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CRONJOB_SERVICE_URI: http://cronjob-service:4010
+    ports:
+      - "4003:4003"
+    depends_on:
+      <<: *app-depends
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4003/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    environment:
+      <<: [*spring-common, *redis]
+      USER_SERVICE_URL: http://user-service:4007
+    depends_on:
+      <<: *app-depends
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4006/api/v1/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]
+
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    environment:
+      <<: [*spring-common, *db, *redis]
+      DB_NAME: userdb
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-dummy}
+    depends_on:
+      <<: *app-depends
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4007/api/v1/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]
+
+  station-service:
+    build:
+      context: .
+      dockerfile: services/station-service/Dockerfile
+    environment:
+      <<: [*spring-common, *db, *rabbit]
+      DB_NAME: stationdb
+      MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI in .env.aws-local}
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-Bus}
+    depends_on:
+      <<: *app-depends
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4004/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]
+
+  ticket-service:
+    build:
+      context: .
+      dockerfile: services/ticket-service/Dockerfile
+    # ticket's DataInitializer waits (with backoff, up to ticket.init.station-wait-timeout,
+    # default 5m) for station-service to seed its data. The restart policy is only a safety
+    # net for when station never comes up in that window, matching what ECS would do.
+    restart: on-failure
+    environment:
+      <<: [*spring-common, *db, *rabbit]
+      DB_NAME: ticketdb
+      TICKET_QR_SECRET_KEY: ${TICKET_QR_SECRET_KEY:?set TICKET_QR_SECRET_KEY in .env.aws-local}
+      USER_SERVICE_URL: http://user-service:4007
+      STATION_SERVICE_URL: http://station-service:4004
+    depends_on:
+      <<: *app-depends
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4005/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]
+
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order-service/Dockerfile
+    environment:
+      <<: [*spring-common, *db, *rabbit]
+      DB_NAME: orderdb
+      TICKET_SERVICE_URL: http://ticket-service:4005
+    depends_on:
+      <<: *app-depends
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4009/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    environment:
+      <<: [*spring-common, *db, *redis, *rabbit]
+      DB_NAME: notificationdb
+      USER_SERVICE_URL: http://user-service:4007
+      FIREBASE_ENABLED: "false"
+      # Register needs an emailed OTP; without real SMTP values the send fails (see sample env).
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-dummy}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-dummy}
+    depends_on:
+      <<: *app-depends
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4008/api/v1/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]
+  cronjob-service:
+    # No Eureka client: the gateway reaches it through CRONJOB_SERVICE_URI=http://cronjob-service:4010.
+    # Context path is /api, so gateway /api/stat/** maps 1:1 to /api/stat/** here.
+    build:
+      context: .
+      dockerfile: services/cronjob-service/Dockerfile
+    environment:
+      <<: *db
+      SPRING_PROFILES_ACTIVE: aws
+      API_KEY: ${API_KEY:?set API_KEY in .env.aws-local}
+      DB_NAME: cronjobdb
+      TICKET_SERVICE_URL: http://ticket-service:4005
+      STATION_SERVICE_URL: http://station-service:4004
+    ports:
+      - "4010:4010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4010/api/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks: [metro-aws-local]

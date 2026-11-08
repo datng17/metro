@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: jdbc:postgresql://metro_postgresql:5432/userdb
+    driver-class-name: org.postgresql.Driver
+    username: postgres
+    password: 12345
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  jackson:
+    date-format: dd/MM/yyyy HH:mm:ss
+    time-zone: Asia/Ho_Chi_Minh
+  data:
+    redis:
+      host: redis
+      port: 6379
+  cloud:
+    discovery:
+      enabled: true
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://metro-eureka:8761/eureka/ # Eureka Server URL
+
+server:
+  port: 4007
+  servlet:
+    context-path: /api/${server.servlet.version}
+    version: v1
+
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: 3600000 # 1 hour in milliseconds
+
+logging:
+  level:
+    com.netflix.discovery: DEBUG
+    org.springframework.cloud.netflix.eureka: DEBUG
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+pocketbase:
+  url: https://pkb.lch.id.vn
+  superuser:
+    email: ${POCKETBASE_EMAIL:dummy@example.com}
+    password: ${POCKETBASE_PASSWORD:dummy}

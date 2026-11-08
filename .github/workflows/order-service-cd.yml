@@ -1,0 +1,23 @@
+name: order-cd-flow
+
+# Deploys only when this service (or this file) changes on main-deployment.
+# The Dockerfile copies only services/order-service/, so the root pom.xml is not a trigger.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main-deployment"]
+    paths:
+      - "services/order-service/**"
+      - ".github/workflows/order-service-cd.yml"
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable-service-cd.yml
+    with:
+      service_dir: order-service
+      ecs_service: order

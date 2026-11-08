@@ -1,0 +1,77 @@
+spring:
+  application:
+    name: user-service
+
+  profiles:
+    active: prod
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: gpt-3.5-turbo
+          temperature: 0.7
+          max-tokens: 1000
+
+logging:
+  level:
+    com.netflix.discovery: DEBUG
+    org.springframework.cloud.netflix.eureka: DEBUG
+
+server:
+  port: 4007
+  servlet:
+    context-path: /api/${server.servlet.version}
+    version: v1
+
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: 3600000 # 1 hour in milliseconds
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+pocketbase:
+  url: https://pkb.lch.id.vn
+  superuser:
+    email: ${POCKETBASE_EMAIL:dummy@example.com}
+    password: ${POCKETBASE_PASSWORD:dummy}
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: 127.0.0.1
+    hostname: localhost
+    instance-id: localhost:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30

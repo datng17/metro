@@ -1,0 +1,77 @@
+# Profile "aws": values come only from environment variables (ECS task definition / compose).
+# Required: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASSWORD,
+#           EUREKA_URL, JWT_SECRET_KEY, API_KEY, TICKET_SERVICE_URL
+# Optional (dummy defaults): PAYPAL_*, STRIPE_*, VNPAY_*
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+  cloud:
+    inetutils:
+      preferred-networks: ${EUREKA_PREFERRED_NETWORKS:10.,172.,192.168.}
+server:
+  port: 4009
+service:
+  users:
+    # Used by TicketClient (name kept from the base config). TICKET_SERVICE_URL is the base URL,
+    # e.g. http://ticket-service:4005 (compose) or http://ticket.metro.local:4005 (ECS).
+    url: ${TICKET_SERVICE_URL}/api/ts/tickets
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: ${JWT_EXPIRATION:3600000}
+paypal:
+  client-id: ${PAYPAL_CLIENT_ID:dummy}
+  client-secret: ${PAYPAL_CLIENT_SECRET:dummy}
+  base-url: ${PAYPAL_BASE_URL:https://api-m.sandbox.paypal.com}
+  return-url: ${PAYPAL_RETURN_URL:http://localhost:4003/api/payment/paypal/success}
+  cancel-url: ${PAYPAL_CANCEL_URL:http://localhost:4003/api/payment/paypal/cancel}
+stripe:
+  secret: ${STRIPE_SECRET_KEY:dummy}
+  publishable: ${STRIPE_PUBLISHABLE_KEY:dummy}
+vnpay:
+  pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+  tmn-code: ${VNPAY_TMN_CODE:dummy}
+  secret-key: ${VNPAY_SECRET_KEY:dummy}
+  return-url: ${VNPAY_RETURN_URL:http://localhost:3000/payment/success}
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: ${spring.cloud.client.ip-address}
+    hostname: ${spring.cloud.client.hostname}
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

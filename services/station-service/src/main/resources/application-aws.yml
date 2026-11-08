@@ -1,0 +1,63 @@
+# Profile "aws": values come only from environment variables (ECS task definition / compose).
+# Required: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, MONGODB_URI, RABBITMQ_HOST, RABBITMQ_USER,
+#           RABBITMQ_PASSWORD, EUREKA_URL, JWT_SECRET_KEY, API_KEY
+spring:
+  application:
+    name: station-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    mongodb:
+      # Atlas SRV string without a database path; the database is set separately.
+      uri: ${MONGODB_URI}
+      database: ${MONGODB_DATABASE:Bus}
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+  cloud:
+    discovery:
+      enabled: true
+    inetutils:
+      preferred-networks: ${EUREKA_PREFERRED_NETWORKS:10.,172.,192.168.}
+server:
+  port: 4004
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: ${JWT_EXPIRATION:3600000}
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: ${spring.cloud.client.ip-address}
+    hostname: ${spring.cloud.client.hostname}
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

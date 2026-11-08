@@ -1,0 +1,180 @@
+# =============================================================================
+# metro-be AWS smoke test: https://metro.test.name.vn (Task 8)
+#
+# Client: VS Code REST Client (humao.rest-client), which Kiro can install.
+#   - Requests use `# @name` and `{{name.response.body.$.x}}` to chain values.
+#   - Cookies are remembered per host (rest-client.rememberCookiesForSubsequentRequests,
+#     on by default). Login sets the HttpOnly `token` cookie; the gateway turns it into
+#     `Authorization: Bearer <jwt>` and adds X-API-KEY itself, so no API key or
+#     Authorization header is sent from here.
+#   - Run the requests top to bottom with "Send Request".
+#
+# Two users are needed because the endpoints check roles:
+#   station / ticket-type create -> ROLE_ADMIN, order create -> ROLE_CUSTOMER.
+#   New users are ROLE_CUSTOMER; the admin is promoted with a one-off ECS task
+#   (step 1.4, PowerShell commands in the Task 8 notes).
+#
+# Register needs an OTP. With the placeholder SMTP credentials the e-mail send fails
+# (send-otp may answer 500), but the OTP is already stored in Redis under
+# OTP:<purpose>:<email>. Read it with ECS Exec (Task 8 notes) and paste it below.
+#
+# Bump @run before every new run (emails, usernames and codes must be unique).
+# =============================================================================
+@baseUrl = https://metro.test.name.vn
+@run = 01
+@password = Smoke-Test-Pass-1
+@adminEmail = metro.admin.{{run}}@example.com
+@customerEmail = metro.customer.{{run}}@example.com
+@otpPurpose = REGISTER
+# Paste the OTPs read from Redis here (step 1.1 / 1.5).
+@adminOtp = 000000
+@customerOtp = 000000
+
+### 0. Gateway health (public)
+GET {{baseUrl}}/actuator/health
+
+### 1.1 Register (admin): send OTP
+POST {{baseUrl}}/api/notifications/send-otp
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "purpose": "{{otpPurpose}}"
+}
+
+### 1.2 Register (admin): verify OTP -> expect "OTP verified" (status 200 in the body)
+POST {{baseUrl}}/api/notifications/verify-otp?email={{adminEmail}}&otp={{adminOtp}}&purpose={{otpPurpose}}
+
+### 1.3 Register (admin): create the user (must run within 5 minutes of 1.2)
+# @name registerAdmin
+POST {{baseUrl}}/api/users/register
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "name": "Metro Smoke Admin",
+  "username": "metro_admin_{{run}}",
+  "password": "{{password}}"
+}
+
+### 1.4 (outside this file) promote the admin to ROLE_ADMIN, see the Task 8 notes.
+
+### 1.5 Register (customer): send OTP
+POST {{baseUrl}}/api/notifications/send-otp
+Content-Type: application/json
+
+{
+  "email": "{{customerEmail}}",
+  "purpose": "{{otpPurpose}}"
+}
+
+### 1.6 Register (customer): verify OTP
+POST {{baseUrl}}/api/notifications/verify-otp?email={{customerEmail}}&otp={{customerOtp}}&purpose={{otpPurpose}}
+
+### 1.7 Register (customer): create the user
+# @name registerCustomer
+POST {{baseUrl}}/api/users/register
+Content-Type: application/json
+
+{
+  "email": "{{customerEmail}}",
+  "name": "Metro Smoke Customer",
+  "username": "metro_customer_{{run}}",
+  "password": "{{password}}"
+}
+
+### 2.1 Login (admin) -> Set-Cookie: token=<jwt with ROLE_ADMIN>
+# @name loginAdmin
+POST {{baseUrl}}/api/auth/local-login
+Content-Type: application/json
+
+{
+  "usernameOrEmail": "{{adminEmail}}",
+  "password": "{{password}}"
+}
+
+### 2.2 Who am I (admin) -> data.role = ROLE_ADMIN
+GET {{baseUrl}}/api/users/me
+
+### 3. Create station (ROLE_ADMIN). station-service publishes station.added; ticket-service logs
+###    "Received station added event".
+# @name createStation
+POST {{baseUrl}}/api/stations
+Content-Type: application/json
+
+{
+  "stationCode": "SMK{{run}}",
+  "name": "Smoke Station {{run}}",
+  "address": "1 Smoke Test Street, District 1, Ho Chi Minh City",
+  "latitude": 10.7769,
+  "longitude": 106.7009
+}
+
+### 3.1 Read it back (public)
+GET {{baseUrl}}/api/stations/{{createStation.response.body.$.data.stationId}}
+
+### 4. Create bus station (writes to MongoDB Atlas, database Bus, collection Bus)
+# @name createBus
+POST {{baseUrl}}/api/bus
+Content-Type: application/json
+
+{
+  "name": "Smoke Bus Stop {{run}}",
+  "code": "BUS-SMK-{{run}}",
+  "address": "2 Smoke Test Street, District 1, Ho Chi Minh City",
+  "latitude": 10.7772,
+  "longitude": 106.7012,
+  "isActive": 1
+}
+
+### 4.1 Read it back from Atlas (public)
+GET {{baseUrl}}/api/bus/{{createBus.response.body.$.data.id}}
+
+### 5. Create ticket type (ROLE_ADMIN)
+# @name createTicketType
+POST {{baseUrl}}/api/ts/ticket-types/create
+Content-Type: application/json
+
+{
+  "name": "Smoke 1-day {{run}}",
+  "description": "Created by http/aws-smoke.http",
+  "price": 15000,
+  "isActive": true,
+  "validityDuration": 1
+}
+
+### 6.1 Login (customer) -> replaces the token cookie with a ROLE_CUSTOMER JWT
+# @name loginCustomer
+POST {{baseUrl}}/api/auth/local-login
+Content-Type: application/json
+
+{
+  "usernameOrEmail": "{{customerEmail}}",
+  "password": "{{password}}"
+}
+
+### 6.2 Payment method for the order (the orders DB starts empty)
+# @name createPaymentMethod
+POST {{baseUrl}}/api/orders/payment-methods/create-payment-method
+Content-Type: application/json
+
+{
+  "paymentMethodName": "SMOKE-{{run}}"
+}
+
+### 6.3 Create order (ROLE_CUSTOMER): order -> ticket (Feign) -> user (Feign)
+# @name createOrder
+POST {{baseUrl}}/api/orders/create/days
+Content-Type: application/json
+
+{
+  "ticketId": { "id": {{createTicketType.response.body.$.data.id}} },
+  "paymentMethodId": {{createPaymentMethod.response.body.$.data.paymentMethodId}}
+}
+
+### 6.4 Mark the payment successful -> order-service publishes order.completed;
+###     notification-service logs "Nhận event order.completed".
+PUT {{baseUrl}}/api/orders/update-success/{{createOrder.response.body.$.data.orderId}}
+
+### 6.5 Order is SUCCESSFUL
+GET {{baseUrl}}/api/orders/{{createOrder.response.body.$.data.orderId}}

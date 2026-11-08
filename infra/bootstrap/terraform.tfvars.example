@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored) and set a globally unique name.
+# Suggested pattern: metro-tfstate-<12-digit-account-id>
+region            = "us-east-1"
+state_bucket_name = "metro-tfstate-123456789012"

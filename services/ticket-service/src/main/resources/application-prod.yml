@@ -1,0 +1,59 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${PROD_DB_NEON_HOST}/neondb?user=${PROD_SPRING_NEON_DATASOURCE_USERNAME}&password=${PROD_SPRING_NEON_DATASOURCE_PASSWORD}&sslmode=require&channelBinding=require&currentSchema=${PROD_TICKET_NEON_SCHEMA_NAME}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    connection-timeout: 60000
+    requested-heartbeat: 60
+
+    # Publisher configuration (cho RabbitTemplate nếu cần)
+    publisher-confirm-type: correlated
+    publisher-returns: true
+
+    template:
+      mandatory: true
+      reply-timeout: 60000
+      retry:
+        enabled: true
+        initial-interval: 1000
+        max-attempts: 3
+        multiplier: 1.5
+        max-interval: 10000
+
+    # Consumer configuration (quan trọng cho consumer)
+    listener:
+      simple:
+        concurrency: 1
+        max-concurrency: 5
+        prefetch: 1
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+
+        # Retry configuration - CHỈ CẦN Ở CONSUMER
+        retry:
+          enabled: true
+          initial-interval: 1000    # Retry sau 1 giây
+          max-attempts: 3           # Retry tối đa 3 lần
+          multiplier: 1.5           # Tăng dần thời gian retry
+          max-interval: 10000       # Tối đa 10 giây giữa các retry
+
+#eureka:
+#  client:
+#    serviceUrl:
+#      defaultZone: http://localhost:8761/eureka/
+#    register-with-eureka: true
+#    fetch-registry: true
+#  instance:
+#    prefer-ip-address: true
+#    ip-address: 127.0.0.1
+#    lease-renewal-interval-in-seconds: 10
+#    lease-expiration-duration-in-seconds: 30

@@ -1,0 +1,99 @@
+name: infra-ci-flow
+
+# Terraform checks on pull requests that touch infra/.
+#   validate: fmt -check and validate (no AWS access).
+#   plan:     read-only plan of infra/envs/prod with the OIDC plan role
+#             (vars.AWS_PLAN_ROLE_ARN, trusted only for repo:<repo>:pull_request).
+#             Runs with -lock=false, so it never blocks an apply.
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  validate:
+    name: fmt and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.3
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        run: terraform -chdir=infra fmt -check -recursive -diff
+
+      # -backend=false: no state access needed; validate also checks every module the roots use.
+      - name: terraform validate (bootstrap)
+        run: |
+          terraform -chdir=infra/bootstrap init -backend=false
+          terraform -chdir=infra/bootstrap validate
+
+      - name: terraform validate (envs/prod)
+        run: |
+          terraform -chdir=infra/envs/prod init -backend=false
+          terraform -chdir=infra/envs/prod validate
+
+  plan:
+    name: plan (envs/prod)
+    runs-on: ubuntu-latest
+    needs: validate
+    # Fork PRs get no OIDC token; skip them and skip until the variables are set.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.AWS_PLAN_ROLE_ARN != '' && vars.TF_STATE_BUCKET != ''
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.3
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC, read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          role-session-name: gha-infra-plan-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: terraform init
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: terraform -chdir=infra/envs/prod init -backend-config="bucket=${TF_STATE_BUCKET}"
+
+      - name: terraform plan
+        run: |
+          set -o pipefail
+          terraform -chdir=infra/envs/prod plan -lock=false -no-color | tee plan.txt
+
+      - name: Plan summary
+        if: always()
+        run: |
+          {
+            echo "### terraform plan (infra/envs/prod)"
+            echo '```'
+            grep -E '^(Plan:|No changes\.|Error:)' plan.txt || echo "see the plan step log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

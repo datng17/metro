@@ -1,0 +1,94 @@
+# Profile "aws": values come only from environment variables (ECS task definition / compose).
+# Required: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASSWORD,
+#           EUREKA_URL, JWT_SECRET_KEY, API_KEY, TICKET_QR_SECRET_KEY, USER_SERVICE_URL, STATION_SERVICE_URL
+app:
+  ticket:
+    secret-key: ${TICKET_QR_SECRET_KEY}
+    qr-code-size: 300
+spring:
+  application:
+    name: ticket-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: /
+    connection-timeout: 60000
+    requested-heartbeat: 60
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+      reply-timeout: 60000
+      retry:
+        enabled: true
+        initial-interval: 1000
+        max-attempts: 3
+        multiplier: 1.5
+        max-interval: 10000
+    listener:
+      simple:
+        concurrency: 1
+        max-concurrency: 5
+        prefetch: 1
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 1000
+          max-attempts: 3
+          multiplier: 1.5
+          max-interval: 10000
+  cloud:
+    inetutils:
+      preferred-networks: ${EUREKA_PREFERRED_NETWORKS:10.,172.,192.168.}
+server:
+  port: 4005
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: ${JWT_EXPIRATION:3600000}
+service:
+  # Base URLs, e.g. http://user-service:4007 / http://station-service:4004 (compose)
+  # or http://user.metro.local:4007 / http://station.metro.local:4004 (ECS).
+  users:
+    url: ${USER_SERVICE_URL}/api/v1/users
+  stations:
+    url: ${STATION_SERVICE_URL}
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: ${spring.cloud.client.ip-address}
+    hostname: ${spring.cloud.client.hostname}
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

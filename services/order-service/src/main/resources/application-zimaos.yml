@@ -1,0 +1,50 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://metro_postgresql:5432/orderdb
+    username: admin
+    password: admin
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 4009
+
+service:
+  users:
+    url: http://localhost:4005/api/ts/tickets
+
+security:
+  api:
+
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: 3600000 # 1 hour in milliseconds
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://metro-eureka:8761/eureka/ # Eureka Server URL
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+paypal:
+  client-id: ${PAYPAL_CLIENT_ID:dummy}
+  client-secret: ${PAYPAL_CLIENT_SECRET:dummy}
+  base-url: https://api-m.sandbox.paypal.com
+  return-url: http://localhost:4008/api/payment/paypal/success
+  cancel-url: http://localhost:4008/api/payment/paypal/cancel

@@ -1,0 +1,32 @@
+spring:
+  datasource:
+#    url: jdbc:postgresql://localhost:5432/metro_user_db?user=admin&password=admin
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/metro_user_db?user=admin&password=admin}&channelBinding=require&currentSchema=metro_user_db
+
+  jpa:
+    hibernate:
+      ddl-auto: create
+
+# ChatBot Prompt Configuration
+chatbot:
+  prompt:
+    bot-name: "MetroBot"
+    system-name: "Ho Chi Minh City Metro Transit System"
+    customer-service-contact: "customer-service@hcmmetro.com"
+    emergency-contact: "113"  # Vietnam emergency number
+    metro-security-contact: "metro-security@hcmmetro.com"
+
+    features:
+      route-planning: true
+      ticket-assistance: true
+      real-time-updates: true
+      accessibility-info: true
+      fare-calculation: true
+      emergency-support: true
+
+    behavior:
+      response-style: "friendly and professional"
+      ask-clarifying-questions: true
+      provide-landmarks: true
+      include-estimated-times: true
+      max-conversation-history: 20

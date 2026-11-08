@@ -1,0 +1,52 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: true
+    properties:
+      format_sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+server:
+  port: 4009
+
+service:
+  users:
+    url: http://localhost:4005/api/ts/tickets
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+security:
+  api:
+
+    key: ${API_KEY:test-only-api-key-not-for-production}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY:dGVzdC1vbmx5LWp3dC1zZWNyZXQtbm90LWZvci1wcm9kdWN0aW9uLTAwMDAwMDAwMDAwMDAwMDA=}
+    expiration: 3600000 # 1 hour in milliseconds
+
+
+paypal:
+  client-id: ${PAYPAL_CLIENT_ID:dummy}
+  client-secret: ${PAYPAL_CLIENT_SECRET:dummy}
+  base-url: https://api-m.sandbox.paypal.com
+  return-url: http://localhost:4008/api/payment/paypal/success
+  cancel-url: http://localhost:4008/api/payment/paypal/cancel
+
+stripe:
+  secret: ${STRIPE_SECRET_KEY:dummy}
+  publishable: ${STRIPE_PUBLISHABLE_KEY:dummy}

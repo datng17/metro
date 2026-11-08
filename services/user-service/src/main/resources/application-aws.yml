@@ -1,0 +1,70 @@
+# Profile "aws": values come only from environment variables (ECS task definition / compose).
+# Required: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, REDIS_HOST, EUREKA_URL, JWT_SECRET_KEY, API_KEY
+# Optional (dummy defaults): OPENAI_API_KEY, POCKETBASE_URL/EMAIL/PASSWORD
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:dummy}
+  cloud:
+    inetutils:
+      preferred-networks: ${EUREKA_PREFERRED_NETWORKS:10.,172.,192.168.}
+server:
+  port: 4007
+  servlet:
+    context-path: /api/${server.servlet.version}
+    version: v1
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: ${JWT_EXPIRATION:3600000}
+pocketbase:
+  url: ${POCKETBASE_URL:http://localhost:8090}
+  superuser:
+    email: ${POCKETBASE_EMAIL:dummy@example.com}
+    password: ${POCKETBASE_PASSWORD:dummy}
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: ${spring.cloud.client.ip-address}
+    hostname: ${spring.cloud.client.hostname}
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+logging:
+  level:
+    com.netflix.discovery: INFO
+    org.springframework.cloud.netflix.eureka: INFO
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

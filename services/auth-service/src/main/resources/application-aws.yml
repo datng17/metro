@@ -1,0 +1,98 @@
+# Profile "aws": values come only from environment variables (ECS task definition / compose).
+# Required: REDIS_HOST, EUREKA_URL, JWT_SECRET_KEY, API_KEY, USER_SERVICE_URL
+# Optional (dummy defaults): GOOGLE_CLIENT_ID/SECRET, FACEBOOK_CLIENT_ID/SECRET
+spring:
+  application:
+    name: auth-service
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+  jackson:
+    date-format: dd/MM/yyyy HH:mm:ss
+    time-zone: Asia/Ho_Chi_Minh
+  cloud:
+    inetutils:
+      preferred-networks: ${EUREKA_PREFERRED_NETWORKS:10.,172.,192.168.}
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:dummy}
+            client-secret: ${GOOGLE_CLIENT_SECRET:dummy}
+            client-name: Google
+            authorization-grant-type: authorization_code
+            redirect-uri: ${OAUTH2_REDIRECT_BASE_URL:http://localhost:4006}/api/v1/login/oauth2/code/google
+            scope:
+              - email
+              - profile
+            provider: google_custom
+          facebook:
+            client-id: ${FACEBOOK_CLIENT_ID:dummy}
+            client-secret: ${FACEBOOK_CLIENT_SECRET:dummy}
+            client-name: Facebook
+            authorization-grant-type: authorization_code
+            redirect-uri: ${OAUTH2_REDIRECT_BASE_URL:http://localhost:4006}/api/v1/login/oauth2/code/facebook
+            scope:
+              - email
+              - public_profile
+            provider: facebook-custom
+        provider:
+          google_custom:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+            user-name-attribute: sub
+          facebook-custom:
+            authorization-uri: https://www.facebook.com/v17.0/dialog/oauth
+            token-uri: https://graph.facebook.com/v17.0/oauth/access_token
+            user-info-uri: https://graph.facebook.com/me?fields=id,name,email,picture
+            user-name-attribute: id
+server:
+  port: 4006
+  servlet:
+    context-path: /api/${app.version}
+app:
+  version: v1
+security:
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: ${JWT_EXPIRATION:86400000}
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+  oauth2:
+    authorized-redirect-url-frontend: ${FRONTEND_URL:http://localhost:3000}/login
+service:
+  users:
+    # USER_SERVICE_URL is the base URL, e.g. http://user-service:4007 or http://user.metro.local:4007
+    url: ${USER_SERVICE_URL}/api/v1/users
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: ${spring.cloud.client.ip-address}
+    hostname: ${spring.cloud.client.hostname}
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${PROD_DB_NEON_HOST}/neondb?user=${PROD_SPRING_NEON_DATASOURCE_USERNAME}&password=${PROD_SPRING_NEON_DATASOURCE_PASSWORD}&sslmode=require&channelBinding=require&currentSchema=${PROD_ORDER_NEON_SCHEMA_NAME}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+stripe:
+  secret: ${STRIPE_SECRET_KEY:dummy}
+  publishable: ${STRIPE_PUBLISHABLE_KEY:dummy}

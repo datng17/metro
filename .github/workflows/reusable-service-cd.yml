@@ -1,0 +1,194 @@
+name: Reusable Service CD Workflow
+
+# Build one service image, push it to ECR (tag = git short SHA), scan it with
+# Trivy and roll it out to its ECS service. AWS access comes from GitHub OIDC:
+# the role in vars.AWS_ROLE_ARN trusts only
+# repo:<owner>/<repo>:ref:refs/heads/main-deployment, so no AWS keys are stored.
+#
+# Naming (from infra/envs/prod):
+#   ECR repository   metro/<service_dir>               e.g. metro/user-service
+#   ECS service      <ecs_service> in <ecs_cluster>     e.g. user in metro-prod
+#   task family      <ecs_cluster>-<ecs_service>        e.g. metro-prod-user
+#   container        <ecs_service>                      e.g. user
+
+on:
+  workflow_call:
+    inputs:
+      service_dir:
+        required: true
+        type: string
+        description: "Directory under services/ and ECR repository suffix (e.g. user-service)"
+      ecs_service:
+        required: true
+        type: string
+        description: "ECS service and container name (e.g. user)"
+      ecs_cluster:
+        required: false
+        type: string
+        default: "metro-prod"
+        description: "ECS cluster name; also the task definition family prefix"
+      aws_region:
+        required: false
+        type: string
+        default: "us-east-1"
+        description: "AWS region of ECR and ECS"
+      run_security_scan:
+        required: false
+        type: boolean
+        default: true
+        description: "Scan the pushed ECR image with Trivy and upload SARIF"
+
+jobs:
+  deploy:
+    name: Build, push and deploy ${{ inputs.ecs_service }}
+    runs-on: ubuntu-latest
+    # The deploy role only trusts this branch; skip clearly instead of failing on other refs.
+    if: github.ref == 'refs/heads/main-deployment'
+    # One deployment per service at a time; a newer push waits for the current one.
+    concurrency:
+      group: cd-${{ inputs.ecs_cluster }}-${{ inputs.ecs_service }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+    env:
+      ECR_REPOSITORY: metro/${{ inputs.service_dir }}
+      TASK_FAMILY: ${{ inputs.ecs_cluster }}-${{ inputs.ecs_service }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-session-name: gha-${{ inputs.ecs_service }}-${{ github.run_id }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image reference
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          TAG="${GITHUB_SHA::7}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "uri=${REGISTRY}/${ECR_REPOSITORY}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      # Tags are IMMUTABLE in ECR: a re-run of the same commit reuses the image.
+      - name: Check whether the image already exists
+        id: exists
+        env:
+          TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" \
+               --image-ids "imageTag=${TAG}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Image ${ECR_REPOSITORY}:${TAG} already exists, skipping build."
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.exists.outputs.found != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      # linux/amd64 matches the task definitions (cpu_architecture = X86_64).
+      # provenance/sbom off: a plain image manifest, so ECR scan-on-push and the
+      # "keep last 10 images" lifecycle rule count only real images.
+      - name: Build and push image to ECR
+        if: steps.exists.outputs.found != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./services/${{ inputs.service_dir }}/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.image.outputs.uri }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ inputs.service_dir }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.service_dir }}
+
+      # Trivy pulls the image from ECR with the Docker login done above.
+      # Report-only (exit-code 0): findings go to the Security tab, not a gate.
+      - name: Scan ECR image with Trivy
+        if: inputs.run_security_scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.image.outputs.uri }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          exit-code: "0"
+
+      # Code scanning upload needs GitHub Advanced Security on private repos;
+      # a failed upload must not block the deployment.
+      - name: Upload Trivy results to GitHub Security tab
+        if: inputs.run_security_scan && always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: trivy-${{ inputs.service_dir }}
+
+      # Start from the latest revision registered by Terraform, so env vars,
+      # secrets, roles, CPU/memory and health checks stay as defined in infra/.
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_FAMILY" \
+            --query taskDefinition > task-definition.json
+
+      - name: Render task definition with the new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ inputs.ecs_service }}
+          image: ${{ steps.image.outputs.uri }}
+
+      - name: Deploy to Amazon ECS
+        id: deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ inputs.ecs_service }}
+          cluster: ${{ inputs.ecs_cluster }}
+          wait-for-service-stability: true
+          wait-for-minutes: 20
+
+      # The stability waiter also succeeds when the deployment circuit breaker
+      # rolled back to the previous revision. Fail the job in that case.
+      - name: Verify the new revision is serving
+        env:
+          EXPECTED: ${{ steps.deploy.outputs.task-definition-arn }}
+          SERVICE: ${{ inputs.ecs_service }}
+          CLUSTER: ${{ inputs.ecs_cluster }}
+        run: |
+          read -r ACTUAL STATE <<< "$(aws ecs describe-services \
+            --cluster "$CLUSTER" --services "$SERVICE" \
+            --query "services[0].deployments[?status=='PRIMARY'] | [0].[taskDefinition, rolloutState]" \
+            --output text)"
+          echo "Expected: ${EXPECTED}"
+          echo "Primary:  ${ACTUAL} (${STATE})"
+          if [ "$ACTUAL" != "$EXPECTED" ] || [ "$STATE" != "COMPLETED" ]; then
+            echo "::error::Deployment of ${SERVICE} was rolled back by the ECS circuit breaker (or did not complete)."
+            aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+              --query "services[0].events[0:10].[createdAt, message]" --output table
+            exit 1
+          fi
+          {
+            echo "### ${SERVICE} deployed"
+            echo "- Image: \`${{ steps.image.outputs.uri }}\`"
+            echo "- Task definition: \`${EXPECTED}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

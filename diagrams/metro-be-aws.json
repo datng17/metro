@@ -1,0 +1,188 @@
+{
+  "title": "Metro backend (metro-be) on AWS",
+  "intro": "Kiến trúc AWS đề xuất cho hệ thống microservices Spring Boot 3.4 / Spring Cloud của metro-be: 9 service chạy trên ECS Fargate trong private subnet, đi vào qua Route 53, AWS WAF và Application Load Balancer, dữ liệu trên RDS PostgreSQL, ElastiCache Redis, DocumentDB và Amazon MQ (RabbitMQ). Keycloak và PocketBase chạy trên EC2, chatbot dùng Amazon Bedrock, push mobile dùng Amazon SNS. Hiện tại hệ thống chạy bằng Docker Compose / Portainer trên ZimaOS với Neon, MongoDB Atlas và Docker Hub; bản vẽ này là phương án chuyển lên AWS, không phải hạ tầng đang chạy.",
+  "canvas": {"w": 1640, "h": 970},
+  "hint": "Bấm một chip để làm nổi luồng, Next để đi từng mũi tên, bấm vào một thành phần để xem vai trò của nó.",
+  "flows": [
+    {"id": "api", "label": "API requests", "color": "#2563EB"},
+    {"id": "data", "label": "Data access", "color": "#0E8F7E"},
+    {"id": "events", "label": "Async events", "color": "#7C3AED"},
+    {"id": "egress", "label": "Third-party APIs", "color": "#E07A00"},
+    {"id": "cicd", "label": "CI/CD", "color": "#64748B"},
+    {"id": "awsapi", "label": "AWS APIs", "color": "#DB2777"}
+  ],
+  "groups": [
+    {"type": "aws-cloud", "x": 270, "y": 16, "w": 1354, "h": 940, "label": "AWS Cloud"},
+    {"type": "region", "x": 284, "y": 48, "w": 1326, "h": 894, "label": "Region", "sub": "ap-southeast-1 (Singapore)"},
+    {"type": "vpc", "x": 446, "y": 78, "w": 894, "h": 850, "label": "VPC", "sub": "10.0.0.0/16, 2 AZs"},
+    {"type": "public-subnet", "x": 460, "y": 106, "w": 160, "h": 808, "label": "Public subnets"},
+    {"type": "private-subnet", "x": 634, "y": 106, "w": 470, "h": 808, "label": "Private app subnets"},
+    {"type": "ecs", "x": 648, "y": 136, "w": 442, "h": 624, "label": "ECS cluster", "sub": "Fargate"},
+    {"type": "private-subnet", "x": 1118, "y": 106, "w": 208, "h": 808, "label": "Private data subnets"},
+    {"type": "services", "x": 1356, "y": 78, "w": 240, "h": 850, "label": "Regional services"},
+    {"type": "corp", "x": 16, "y": 360, "w": 230, "h": 204, "label": "Third-party SaaS"}
+  ],
+  "pools": [
+    {"id": "pool-edge", "x": 680, "y": 166, "w": 398, "h": 134, "color": "#2563EB", "title": "Edge & discovery",
+     "detail": ["Edge & discovery", "Amazon ECS on AWS Fargate", "gateway-service nhận mọi request từ ALB và định tuyến /api/v1/{auth,user,station,ticket,order,notification}/** bằng lb:// tới các service đã đăng ký với eureka-service."]},
+    {"id": "pool-identity", "x": 680, "y": 310, "w": 398, "h": 134, "color": "#059669", "title": "Identity & users",
+     "detail": ["Identity & users", "Amazon ECS on AWS Fargate", "auth-service và user-service: đăng nhập local, Google/Facebook OAuth2, JWT, hồ sơ người dùng, blog (PocketBase), feedback, request và chatbot (Bedrock)."]},
+    {"id": "pool-transit", "x": 680, "y": 454, "w": 398, "h": 134, "color": "#7C3AED", "title": "Transit & ticketing",
+     "detail": ["Transit & ticketing", "Amazon ECS on AWS Fargate", "station-service, ticket-service và order-service: ga, tuyến, lịch chạy, bus, bảng giá, vé QR, quét vé vào/ra, đơn hàng và thanh toán."]},
+    {"id": "pool-async", "x": 680, "y": 598, "w": 398, "h": 134, "color": "#D97706", "title": "Async & batch",
+     "detail": ["Async & batch", "Amazon ECS on AWS Fargate", "notification-service tiêu thụ sự kiện order.completed để gửi email qua SES và push qua SNS; cronjob-service chạy thống kê hằng ngày lúc 00:00."]}
+  ],
+  "nodes": [
+    {"id": "github", "icon": "res-git-repository", "x": 36, "y": 8, "w": 186, "size": 40, "label": "GitHub Actions", "sub": ["CI/CD, Docker build"],
+     "detail": ["GitHub Actions", "CI/CD (ngoài AWS)", "Workflow CI/CD riêng cho từng service (reusable-service-cd.yml) build image Java 21 trên nhánh main-deployment. Trên AWS, bước push đổi từ Docker Hub sang Amazon ECR và deploy bằng cách cập nhật ECS service."]},
+    {"id": "users", "icon": "res-users", "x": 36, "y": 238, "w": 186, "size": 48, "label": "Web & mobile clients", "sub": ["Passengers, staff", "Gate QR scanners"],
+     "detail": ["Clients", "Web, mobile app, máy quét cổng", "Frontend web, app mobile (OAuth2 mobile flow) và thiết bị quét vé tại cổng ga gọi API qua HTTPS; trang đăng nhập Keycloak cũng đi qua cùng ALB."]},
+    {"id": "pay", "icon": "res-globe", "x": 36, "y": 390, "w": 186, "size": 36, "label": "Payment gateways", "sub": ["Stripe, PayPal, VNPay"],
+     "detail": ["Payment gateways", "Stripe, PayPal sandbox, VNPay", "order-service tạo checkout Stripe, đơn PayPal và URL thanh toán VNPay; người dùng được redirect về các endpoint success/failed/callback qua ALB."]},
+    {"id": "idp", "icon": "res-saml-token", "x": 36, "y": 474, "w": 186, "size": 36, "label": "OAuth providers", "sub": ["Google, Facebook"],
+     "detail": ["OAuth providers", "Google, Facebook OAuth2", "auth-service đổi authorization code và lấy user info từ Google và Facebook cho đăng nhập mạng xã hội (web và mobile)."]},
+
+    {"id": "r53", "icon": "amazon-route-53", "x": 300, "y": 134, "w": 130, "label": "Route 53", "sub": ["api + auth domains"],
+     "detail": ["DNS", "Amazon Route 53", "Hosted zone với bản ghi alias cho domain API và domain đăng nhập Keycloak, cả hai trỏ tới Application Load Balancer."]},
+    {"id": "igw", "icon": "res-amazon-vpc-internet-gateway", "x": 300, "y": 240, "w": 130, "label": "Internet Gateway", "sub": ["VPC edge"],
+     "detail": ["Internet Gateway", "Amazon VPC", "Cổng vào/ra Internet của VPC cho ALB và NAT Gateway."]},
+
+    {"id": "waf", "icon": "aws-waf", "x": 475, "y": 134, "w": 130, "label": "AWS WAF", "sub": ["Rate rules, OWASP"],
+     "detail": ["Web ACL", "AWS WAF", "Gắn vào ALB: managed rule OWASP và rate-based rule cho /api/v1/auth/login và trang login Keycloak, bổ sung cho rate limiter Redis của gateway-service."]},
+    {"id": "alb", "icon": "res-elastic-load-balancing-application-load-balancer", "x": 475, "y": 240, "w": 130, "label": "App Load Balancer", "sub": ["HTTPS 443, ACM"],
+     "detail": ["Ingress", "Application Load Balancer", "Kết thúc TLS bằng chứng chỉ ACM. Rule theo host: domain API tới gateway-service (port 4003), domain auth tới Keycloak trên EC2 (port 8080)."]},
+    {"id": "nat", "icon": "res-amazon-vpc-nat-gateway", "x": 475, "y": 470, "w": 130, "label": "NAT Gateway", "sub": ["Outbound egress"],
+     "detail": ["Egress", "NAT Gateway", "Cho các task trong private subnet gọi ra Internet, giờ chỉ còn cổng thanh toán và OAuth Google / Facebook. Mỗi AZ một NAT để tránh điểm lỗi đơn."]},
+
+    {"id": "gateway", "icon": "res-amazon-elastic-container-service-service", "x": 685, "y": 194, "w": 120, "size": 40, "label": "gateway-service", "sub": ["Spring Cloud GW", "port 4003"],
+     "detail": ["API gateway", "ECS service (Spring Cloud Gateway)", "Định tuyến theo path, gộp Swagger của các service, rate limit bằng Redis và kiểm tra JWT do Keycloak (realm hcmurs) phát hành trước khi chuyển tiếp."]},
+    {"id": "eureka", "icon": "aws-cloud-map", "x": 813, "y": 194, "w": 120, "size": 40, "label": "eureka-service", "sub": ["Service registry", "port 8761"],
+     "detail": ["Service registry", "ECS service (Netflix Eureka)", "Registry để gateway và Feign client tìm service bằng tên. Icon Cloud Map đứng thay; có thể chuyển hẳn sang AWS Cloud Map / ECS Service Connect."]},
+    {"id": "auth", "icon": "res-amazon-elastic-container-service-service", "x": 685, "y": 338, "w": 120, "size": 40, "label": "auth-service", "sub": ["JWT, OAuth2", "port 4006"],
+     "detail": ["Authentication", "ECS service", "Đăng nhập local, Google/Facebook OAuth2 (web và mobile), phát và thu hồi JWT; lưu phiên trên Redis và gọi user-service qua Feign."]},
+    {"id": "user", "icon": "res-amazon-elastic-container-service-service", "x": 813, "y": 338, "w": 120, "size": 40, "label": "user-service", "sub": ["Profiles, blogs", "port 4007"],
+     "detail": ["Users", "ECS service", "Đăng ký, hồ sơ, reset mật khẩu, blog đọc từ PocketBase, feedback, request xác minh sinh viên (job khóa sinh viên hết hạn lúc 00:00) và chatbot trên Amazon Bedrock."]},
+    {"id": "station", "icon": "res-amazon-elastic-container-service-service", "x": 685, "y": 482, "w": 120, "size": 40, "label": "station-service", "sub": ["Stations, routes", "port 4004"],
+     "detail": ["Stations", "ECS service", "Ga, tuyến, station-route, lịch chạy và bus; dữ liệu quan hệ trên PostgreSQL, dữ liệu bus trên DocumentDB; phát sự kiện station.add / station.delete."]},
+    {"id": "ticket", "icon": "res-amazon-elastic-container-service-service", "x": 813, "y": 482, "w": 120, "size": 40, "label": "ticket-service", "sub": ["QR tickets, scans", "port 4005"],
+     "detail": ["Tickets", "ECS service", "Loại vé, fare matrix, sinh mã QR, quét vào/ra và log sử dụng; job 5 phút một lần hết hạn vé; nghe sự kiện ga từ RabbitMQ với DLQ."]},
+    {"id": "order", "icon": "res-amazon-elastic-container-service-service", "x": 941, "y": 482, "w": 120, "size": 40, "label": "order-service", "sub": ["Orders, payments", "port 4008"],
+     "detail": ["Orders", "ECS service", "Tạo đơn vé lượt và vé ngày, phương thức thanh toán, Stripe / PayPal / VNPay; phát order.completed lên order.exchange."]},
+    {"id": "notification", "icon": "res-amazon-elastic-container-service-service", "x": 685, "y": 626, "w": 150, "size": 40, "label": "notification-service", "sub": ["Email OTP, mobile push", "port 4009"],
+     "detail": ["Notifications", "ECS service", "Tiêu thụ order.completed.queue (ack thủ công), gửi email OTP qua SES và push tới thiết bị qua SNS mobile push thay cho Firebase Admin SDK."]},
+    {"id": "cronjob", "icon": "res-amazon-elastic-container-service-task", "x": 843, "y": 626, "w": 120, "size": 40, "label": "cronjob-service", "sub": ["Daily statistics", "port 4010"],
+     "detail": ["Batch statistics", "ECS service (1 task)", "Chạy 00:00 mỗi ngày, gọi ticket-service và station-service để tính thống kê giờ cao điểm, ga và loại vé rồi ghi vào PostgreSQL. Chỉ chạy một task để job không chạy trùng."]},
+
+    {"id": "keycloak", "icon": "res-amazon-ec2-instance", "x": 685, "y": 800, "w": 150, "label": "Keycloak on EC2", "sub": ["realm hcmurs, port 8080", "DB on RDS"],
+     "detail": ["Identity server", "Amazon EC2 (Keycloak)", "Thay Keycloak tự host ở kc.lch.id.vn: phát JWT cho realm hcmurs mà gateway-service kiểm tra. Lưu dữ liệu trong schema keycloak trên RDS; nên chạy 2 instance ở 2 AZ sau ALB."]},
+    {"id": "pocketbase", "icon": "res-amazon-ec2-instance", "x": 851, "y": 800, "w": 150, "label": "PocketBase on EC2", "sub": ["Blog CMS", "SQLite on EBS gp3"],
+     "detail": ["Blog CMS", "Amazon EC2 (PocketBase)", "Thay PocketBase ở pkb.lch.id.vn. user-service gọi nội bộ để đọc blog. PocketBase lưu SQLite trên ổ EBS nên chỉ chạy được 1 instance; cần snapshot EBS định kỳ."]},
+
+    {"id": "redis", "icon": "res-amazon-elasticache-elasticache-for-redis", "x": 1142, "y": 210, "w": 160, "label": "ElastiCache Redis", "sub": ["Rate limit, sessions", "OTP cache"],
+     "detail": ["Cache", "Amazon ElastiCache for Redis", "Thay container redis 7.2: rate limit của gateway, phiên và token của auth-service, cache của user-service và notification-service."]},
+    {"id": "rds", "icon": "res-amazon-aurora-postgresql-instance", "x": 1142, "y": 320, "w": 160, "label": "RDS PostgreSQL 17", "sub": ["Multi-AZ", "schema per service"],
+     "detail": ["Relational database", "Amazon RDS for PostgreSQL", "Thay Neon / container postgres 17.4: một instance Multi-AZ, mỗi service một schema (user, station, ticket, order, notification, statistics, keycloak) như cấu hình currentSchema hiện tại."]},
+    {"id": "docdb", "icon": "amazon-documentdb", "x": 1142, "y": 450, "w": 160, "label": "DocumentDB", "sub": ["MongoDB API", "bus data"],
+     "detail": ["Document store", "Amazon DocumentDB", "Thay MongoDB Atlas cho database Bus của station-service. Cần kiểm tra các truy vấn Mongo có nằm trong phần API DocumentDB hỗ trợ không."]},
+    {"id": "mq", "icon": "res-amazon-mq-broker", "x": 1142, "y": 600, "w": 160, "label": "Amazon MQ", "sub": ["RabbitMQ broker", "order/station events"],
+     "detail": ["Message broker", "Amazon MQ for RabbitMQ", "Giữ nguyên giao thức AMQP: station.exchange (station.add, station.delete, kèm dlx.exchange) và order.exchange (order.completed)."]},
+
+    {"id": "ecr", "icon": "amazon-elastic-container-registry", "x": 1380, "y": 160, "w": 192, "size": 40, "label": "Amazon ECR", "sub": ["9 service images"],
+     "detail": ["Container registry", "Amazon ECR", "Thay Docker Hub (lcaohoanq/metro-*): mỗi service một repository, scan image khi push; ECS kéo image qua VPC endpoint."]},
+    {"id": "secrets", "icon": "aws-secrets-manager", "x": 1380, "y": 260, "w": 192, "size": 40, "label": "Secrets Manager", "sub": ["JWT, API keys, DB creds"],
+     "detail": ["Secrets", "AWS Secrets Manager", "Giữ JWT secret, X-API-KEY, mật khẩu DB, key Stripe / PayPal / VNPay, OAuth client secret, admin Keycloak và PocketBase; inject vào task definition thay cho giá trị đang viết cứng trong application*.yml."]},
+    {"id": "bedrock", "icon": "amazon-bedrock", "x": 1380, "y": 408, "w": 192, "size": 40, "label": "Amazon Bedrock", "sub": ["Chatbot LLM"],
+     "detail": ["Generative AI", "Amazon Bedrock", "Thay OpenAI gpt-3.5-turbo cho /users/chatbot/chat. user-service gọi Converse API qua VPC endpoint bằng IAM role của task, không cần API key."]},
+    {"id": "cw", "icon": "amazon-cloudwatch", "x": 1380, "y": 500, "w": 192, "size": 40, "label": "CloudWatch", "sub": ["Logs, metrics, alarms"],
+     "detail": ["Observability", "Amazon CloudWatch", "Nhận log awslogs của mọi task và EC2, metric Prometheus từ /actuator, alarm cho ALB 5xx, CPU ECS, RDS và độ sâu queue MQ."]},
+    {"id": "xray", "icon": "aws-x-ray", "x": 1380, "y": 596, "w": 192, "size": 40, "label": "AWS X-Ray", "sub": ["Tracing, replaces Zipkin"],
+     "detail": ["Tracing", "AWS X-Ray", "Thay container Zipkin (lưu trong RAM): sidecar ADOT nhận trace của các service và đẩy lên X-Ray."]},
+    {"id": "sns", "icon": "amazon-simple-notification-service", "x": 1380, "y": 691, "w": 192, "size": 40, "label": "Amazon SNS", "sub": ["Mobile push"],
+     "detail": ["Mobile push", "Amazon SNS", "Thay Firebase Admin SDK: mỗi thiết bị là một platform endpoint. SNS vẫn chuyển tin qua FCM cho Android và APNs cho iOS, nên vẫn cần nạp credential FCM vào SNS platform application."]},
+    {"id": "ses", "icon": "amazon-simple-email-service", "x": 1380, "y": 791, "w": 192, "size": 40, "label": "Amazon SES", "sub": ["OTP mail, replaces Gmail"],
+     "detail": ["Email", "Amazon SES", "Thay SMTP Gmail của notification-service để gửi email OTP và xác nhận đơn hàng (SMTP 587 qua VPC endpoint)."]}
+  ],
+  "edges": [
+    {"flow": "api", "points": [[224, 266], [298, 266]], "from": "users", "to": "igw"},
+    {"flow": "api", "points": [[432, 266], [473, 266]], "from": "igw", "to": "alb"},
+    {"flow": "api", "points": [[607, 266], [627, 266], [627, 218], [683, 218]], "from": "alb", "to": "gateway"},
+    {"flow": "api", "points": [[720, 289], [720, 305], [664, 305], [664, 362], [683, 362]], "from": "gateway", "to": "pool-identity"},
+    {"flow": "api", "points": [[664, 362], [664, 506], [683, 506]], "from": "gateway", "to": "pool-transit"},
+    {"flow": "api", "points": [[664, 506], [664, 650], [683, 650]], "from": "gateway", "to": "pool-async"},
+    {"flow": "api", "points": [[607, 266], [641, 266], [641, 826], [683, 826]], "from": "alb", "to": "keycloak"},
+
+    {"flow": "data", "points": [[1080, 236], [1140, 236]], "from": "pool-edge", "to": "redis"},
+    {"flow": "data", "points": [[1080, 330], [1096, 330], [1096, 250], [1140, 250]], "from": "pool-identity", "to": "redis"},
+    {"flow": "data", "points": [[1080, 346], [1140, 346]], "from": "pool-identity", "to": "rds"},
+    {"flow": "data", "points": [[1080, 476], [1140, 476]], "from": "pool-transit", "to": "docdb"},
+    {"flow": "data", "points": [[1080, 530], [1111, 530], [1111, 360], [1140, 360]], "from": "pool-transit", "to": "rds"},
+    {"flow": "data", "points": [[678, 430], [656, 430], [656, 780], [926, 780], [926, 798]], "from": "user", "to": "pocketbase"},
+
+    {"flow": "events", "points": [[1080, 566], [1096, 566], [1096, 616], [1140, 616]], "start": true, "from": "pool-transit", "to": "mq"},
+    {"flow": "events", "points": [[1140, 640], [1080, 640]], "from": "mq", "to": "pool-async"},
+
+    {"flow": "egress", "points": [[646, 496], [607, 496]], "to": "nat"},
+    {"flow": "egress", "points": [[473, 496], [224, 496]], "from": "nat", "to": "idp"},
+    {"flow": "egress", "points": [[258, 496], [258, 412], [224, 412]], "start": true, "from": "nat", "to": "pay"},
+
+    {"flow": "cicd", "points": [[224, 32], [258, 32], [258, 8], [1476, 8], [1476, 158]], "from": "github", "to": "ecr"},
+    {"flow": "cicd", "points": [[1378, 184], [1092, 184]], "dashed": true, "from": "ecr"},
+
+    {"flow": "awsapi", "points": [[1080, 432], [1378, 432]], "from": "user", "to": "bedrock"},
+    {"flow": "awsapi", "points": [[1080, 715], [1378, 715]], "from": "notification", "to": "sns"},
+    {"flow": "awsapi", "points": [[1348, 715], [1348, 815], [1378, 815]], "from": "notification", "to": "ses"}
+  ],
+  "badges": [
+    {"flow": "api", "x": 250, "y": 266},
+    {"flow": "data", "x": 1110, "y": 236},
+    {"flow": "events", "x": 1096, "y": 591},
+    {"flow": "egress", "x": 627, "y": 496},
+    {"flow": "cicd", "x": 240, "y": 32},
+    {"flow": "awsapi", "x": 1222, "y": 432}
+  ],
+  "labels": [
+    {"flow": "cicd", "x": 1230, "y": 178, "text": "image pull", "anchor": "middle"},
+    {"flow": "egress", "x": 296, "y": 490, "text": "egress via NAT + IGW"},
+    {"flow": "awsapi", "x": 1222, "y": 709, "text": "VPC endpoints", "anchor": "middle"},
+    {"flow": "api", "x": 647, "y": 794, "text": "auth domain"}
+  ],
+  "connectors": [
+    {"points": [[430, 160], [475, 160]]},
+    {"points": [[540, 218], [540, 240]]}
+  ],
+  "sections": [
+    {"title": "Các luồng chính", "open": true, "ordered": true, "items": [
+      {"lead": "API requests.", "text": "Client gọi HTTPS tới domain trên Route 53, qua Internet Gateway, AWS WAF và ALB. Domain API tới gateway-service, gateway tra eureka-service và chuyển request theo path tới auth, user, station, ticket, order hoặc notification; domain auth tới Keycloak trên EC2."},
+      {"lead": "Data access.", "text": "gateway và auth-service dùng ElastiCache Redis; user, station, ticket, order, notification, cronjob và Keycloak dùng RDS PostgreSQL, mỗi bên một schema; station-service đọc dữ liệu bus từ DocumentDB; user-service đọc blog từ PocketBase trên EC2."},
+      {"lead": "Async events.", "text": "station-service phát station.add / station.delete để ticket-service cập nhật vé (có DLQ); order-service phát order.completed để notification-service gửi email và push."},
+      {"lead": "Third-party APIs.", "text": "Task trong private subnet đi ra Internet qua NAT Gateway, chỉ còn Stripe, PayPal, VNPay (có callback về qua ALB) và Google / Facebook OAuth."},
+      {"lead": "CI/CD.", "text": "GitHub Actions build từng service bằng Maven và Docker, push image lên Amazon ECR, sau đó ECS Fargate kéo image mới khi service được cập nhật."},
+      {"lead": "AWS APIs.", "text": "user-service gọi Amazon Bedrock cho chatbot; notification-service gửi push qua Amazon SNS và email qua Amazon SES. Cả ba đi qua VPC interface endpoint và xác thực bằng IAM role của task."}
+    ]},
+    {"title": "Ánh xạ từ hạ tầng hiện tại sang AWS", "items": [
+      {"lead": "Docker Compose / Portainer trên ZimaOS", "text": "sang ECS on Fargate, mỗi service một ECS service và task definition."},
+      {"lead": "Keycloak (kc.lch.id.vn)", "text": "sang Keycloak trên Amazon EC2, sau ALB, database trên RDS."},
+      {"lead": "PocketBase (pkb.lch.id.vn)", "text": "sang PocketBase trên Amazon EC2, dữ liệu trên EBS."},
+      {"lead": "OpenAI gpt-3.5-turbo", "text": "sang Amazon Bedrock."},
+      {"lead": "Firebase Cloud Messaging (Admin SDK)", "text": "sang Amazon SNS mobile push."},
+      {"lead": "Neon PostgreSQL và container postgres 17.4", "text": "sang Amazon RDS for PostgreSQL Multi-AZ, giữ mô hình schema theo service."},
+      {"lead": "MongoDB Atlas", "text": "sang Amazon DocumentDB."},
+      {"lead": "Container redis 7.2.3", "text": "sang Amazon ElastiCache for Redis."},
+      {"lead": "RabbitMQ (localhost:5672)", "text": "sang Amazon MQ for RabbitMQ."},
+      {"lead": "Docker Hub lcaohoanq/metro-*", "text": "sang Amazon ECR."},
+      {"lead": "Zipkin trong RAM", "text": "sang AWS X-Ray qua ADOT collector; log file trong volume ./logs sang CloudWatch Logs."},
+      {"lead": "Gmail SMTP", "text": "sang Amazon SES."},
+      {"lead": "Secret viết cứng trong application*.yml", "text": "sang AWS Secrets Manager."}
+    ]},
+    {"title": "Việc cần xử lý trước khi chuyển", "items": [
+      {"lead": "Secret đang nằm trong code.", "text": "JWT secret, X-API-KEY, key Stripe và PayPal, mật khẩu Gmail, tài khoản PocketBase, URI MongoDB và OAuth client secret đều nằm trong application*.yml; cần chuyển vào Secrets Manager và đổi (rotate) toàn bộ vì đã lộ trong git."},
+      {"lead": "Feign client trỏ localhost.", "text": "ticket-service, notification-service, auth-service và cronjob-service gọi user / station / ticket qua http://localhost:<port>; trên ECS phải đổi sang tên service trong Eureka hoặc DNS Cloud Map."},
+      {"lead": "Callback URL.", "text": "PayPal return/cancel URL và redirect OAuth2 đang là localhost; cần đổi sang domain công khai của ALB."},
+      {"lead": "Port không thống nhất.", "text": "order-service là 4009 trong application.yml nhưng 4008 trong docker-compose; notification-service là 4008 ở profile prod và 4009 ở zimaos. Cần chốt một port cho mỗi target group và health check."},
+      {"lead": "Chatbot sang Bedrock.", "text": "Đổi dependency Spring AI OpenAI sang Spring AI Bedrock Converse, chọn model và bật quyền truy cập model trong region; prompt và tham số temperature / max-tokens cần chỉnh lại theo model mới."},
+      {"lead": "Push sang SNS.", "text": "Thay Firebase Admin SDK bằng AWS SDK SNS: tạo platform application (FCM cho Android, APNs cho iOS), đăng ký FCM token hiện có thành SNS endpoint. App mobile vẫn dùng Firebase SDK để lấy token."},
+      {"lead": "Keycloak và PocketBase trên EC2.", "text": "Keycloak nên chạy 2 instance ở 2 AZ trong Auto Scaling group để không thành điểm lỗi đơn; issuer-uri của gateway đổi sang domain mới. PocketBase dùng SQLite nên chỉ 1 instance, cần snapshot EBS và chấp nhận downtime khi instance hỏng."},
+      {"lead": "Eureka hay Cloud Map.", "text": "Bản vẽ giữ eureka-service trên ECS để không đổi code; thay bằng AWS Cloud Map / ECS Service Connect là quyết định còn mở."}
+    ]}
+  ]
+}

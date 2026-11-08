@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: order-service
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    publisher-confirm-type: correlated
+    publisher-returns: true
+      # 👉 Giới hạn số lần reconnect nếu RabbitMQ down
+    connection-timeout: 10s
+    template:
+      mandatory: true  # bắt buộc phải có consumer (nếu không -> trigger callback)
+  profiles:
+    active: prod
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: 127.0.0.1
+    hostname: localhost
+    instance-id: localhost:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+
+server:
+  port: 4009
+
+service:
+  users:
+    url: http://localhost:4005/api/ts/tickets
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+security:
+  api:
+
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: 3600000 # 1 hour in milliseconds
+
+paypal:
+  client-id: ${PAYPAL_CLIENT_ID:dummy}
+  client-secret: ${PAYPAL_CLIENT_SECRET:dummy}
+  base-url: https://api-m.sandbox.paypal.com
+  return-url: http://localhost:4008/api/payment/paypal/success
+  cancel-url: http://localhost:4008/api/payment/paypal/cancel

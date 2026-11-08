@@ -1,0 +1,56 @@
+# Profile "aws": values come only from environment variables (ECS task definition / compose).
+# Required: REDIS_HOST, EUREKA_URL, JWT_SECRET_KEY, API_KEY
+server:
+  port: 4003
+spring:
+  main:
+    web-application-type: reactive
+  application:
+    name: gateway-service
+    gw-config-version: v2
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    discovery:
+      enabled: true
+    inetutils:
+      # Register the task/container private IP, not a link-local or loopback address.
+      preferred-networks: ${EUREKA_PREFERRED_NETWORKS:10.,172.,192.168.}
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    ip-address: ${spring.cloud.client.ip-address}
+    hostname: ${spring.cloud.client.hostname}
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+jwt:
+  secretKey: ${JWT_SECRET_KEY}
+  expiration: ${JWT_EXPIRATION:3600000}
+security:
+  api:
+    key: ${API_KEY}
+    header: X-API-KEY
+cors:
+  # Comma-separated, no trailing slash, e.g. https://metro.test.name.vn,https://metro-fe.vercel.app
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+routes:
+  # cronjob-service has no Eureka client, so set CRONJOB_SERVICE_URI to its URL
+  # (compose: http://cronjob-service:4010, ECS: http://cronjob.metro.local:4010).
+  cronjob-uri: ${CRONJOB_SERVICE_URI:lb://cronjob-service}
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

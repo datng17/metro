@@ -1,0 +1,23 @@
+name: user-cd-flow
+
+# Deploys only when this service (or this file) changes on main-deployment.
+# The Dockerfile copies only services/user-service/, so the root pom.xml is not a trigger.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main-deployment"]
+    paths:
+      - "services/user-service/**"
+      - ".github/workflows/user-service-cd.yml"
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable-service-cd.yml
+    with:
+      service_dir: user-service
+      ecs_service: user

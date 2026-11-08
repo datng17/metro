@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: station-service
+
+  cloud:
+    discovery:
+      enabled: true
+
+  datasource:
+    url: jdbc:postgresql://metro_postgresql:5432/stationdb
+    username: postgres
+    password: 12345
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 4004
+
+security:
+  api:
+
+    key: ${API_KEY}
+    header: X-API-KEY
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    expiration: 3600000 # 1 hour in milliseconds
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://metro-eureka:8761/eureka/ # Eureka Server URL

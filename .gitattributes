@@ -1,0 +1,38 @@
+# Canonical line-ending rules for the whole repo. Later lines win, so the
+# catch-all comes first and the Windows-only scripts come last.
+* text=auto eol=lf
+
+*.java text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.properties text eol=lf
+*.sql text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+*.http text eol=lf
+Dockerfile text eol=lf
+mvnw text eol=lf
+
+# Binaries: never touch.
+*.jar binary
+*.class binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.p12 binary
+*.jks binary
+
+# Windows scripts keep CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

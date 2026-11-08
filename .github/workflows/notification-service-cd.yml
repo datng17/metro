@@ -1,0 +1,23 @@
+name: notification-cd-flow
+
+# Deploys only when this service (or this file) changes on main-deployment.
+# The Dockerfile copies only services/notification-service/, so the root pom.xml is not a trigger.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main-deployment"]
+    paths:
+      - "services/notification-service/**"
+      - ".github/workflows/notification-service-cd.yml"
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable-service-cd.yml
+    with:
+      service_dir: notification-service
+      ecs_service: notification
