@@ -61,3 +61,5 @@ terraform.rc
 
 # Real user data, keep out of git
 data/users_rows.csv
+/diagrams
+/docs
