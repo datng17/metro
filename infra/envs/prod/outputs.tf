@@ -189,3 +189,35 @@ output "github_plan_role_arn" {
   description = "Set as the GitHub repository variable AWS_PLAN_ROLE_ARN (used by infra-ci.yml), or null."
   value       = module.github_oidc.plan_role_arn
 }
+
+output "rds_identifier" {
+  description = "RDS instance identifier (aws rds stop-db-instance / start-db-instance)."
+  value       = module.rds.identifier
+}
+
+output "alerts_sns_topic_arn" {
+  description = "SNS topic of the alarms and the budget. Confirm the subscription email."
+  value       = module.monitoring.sns_topic_arn
+}
+
+output "alarm_names" {
+  description = "CloudWatch alarms that notify the alerts topic."
+  value       = module.monitoring.alarm_names
+}
+
+output "budget_name" {
+  description = "AWS Budgets monthly cost budget."
+  value       = module.monitoring.budget_name
+}
+
+output "scale_config" {
+  description = "Read by scripts/scale.ps1 and scripts/scale.sh: cluster, start order, Terraform desired counts, RDS and alarms."
+  value = {
+    cluster        = module.ecs_cluster.cluster_name
+    groups         = local.scale_groups
+    desired_counts = local.service_desired_counts
+    rds_identifier = module.rds.identifier
+    alarm_names    = module.monitoring.alarm_names
+    health_url     = "https://${var.domain_name}/actuator/health"
+  }
+}

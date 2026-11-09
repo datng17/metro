@@ -185,3 +185,21 @@ variable "github_enable_plan_role" {
   type        = bool
   default     = true
 }
+
+variable "alert_email" {
+  description = "Email subscribed to the metro-prod-alerts SNS topic (alarms and budget). Set it in terraform.tfvars (gitignored) or with -var. Null creates the topic without a subscription."
+  type        = string
+  default     = null
+}
+
+variable "budget_limit_usd" {
+  description = "Monthly AWS cost budget for the account, in USD (100% forecast notification)."
+  type        = number
+  default     = 100
+}
+
+variable "budget_alert_thresholds_usd" {
+  description = "Actual monthly spend (USD) at which the budget notifies the alerts topic."
+  type        = list(number)
+  default     = [50, 100]
+}
