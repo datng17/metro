@@ -8,9 +8,7 @@
 
 A 9-service Spring Boot backend for a metro ticketing system, deployed to AWS with Terraform, GitHub Actions and ECS Fargate. The infrastructure is fully reproducible from an empty account, deploys without stored AWS keys, and can be scaled to zero between uses.
 
-- **Live:** `https://metro.test.name.vn/actuator/health` (may be scaled down to save cost)
-- **Runbook:** [docs/aws-deployment.md](docs/aws-deployment.md) covers deploy, rollback, monitoring, secrets and teardown.
-
+- **Live:** `https://metro-fe.vercel.app/` (may be scaled down to save cost)
 ## Highlights
 
 | Area | What was built |
@@ -23,30 +21,6 @@ A 9-service Spring Boot backend for a metro ticketing system, deployed to AWS wi
 | Reliability | ECS deployment circuit breaker with automatic rollback, ALB and container health checks, Cloud Map service discovery |
 | Observability | CloudWatch alarms on ALB 5xx, target health and RDS, routed to SNS email; centralized CloudWatch Logs |
 | Cost control | AWS Budget alerts at $50 and $100; `scale` scripts take the stack from about $120 to about $35 per month |
-
-## Architecture
-
-```mermaid
-flowchart LR
-  U[Client] -->|HTTPS| CF[Cloudflare DNS]
-  CF --> ALB[ALB + ACM]
-  subgraph VPC["VPC 10.20.0.0/16 (2 AZs)"]
-    ALB --> GW[gateway]
-    subgraph ECS["ECS Fargate (private subnets)"]
-      GW --> EU[eureka]
-      GW --> SVC[auth / user / station / ticket<br/>order / notification / cronjob]
-      SVC --> MQ[rabbitmq]
-      SVC --> RD[redis]
-    end
-    SVC --> RDS[(RDS PostgreSQL 17)]
-    NAT[fck-nat + EIP]
-  end
-  SVC -->|egress via NAT| ATLAS[(MongoDB Atlas)]
-  GH[GitHub Actions] -->|OIDC| ECR[ECR] --> ECS
-  ALB & RDS -.-> CW[CloudWatch alarms] --> SNS[SNS email]
-```
-
-A request reaches the ALB over TLS, goes to the Spring Cloud Gateway, and is routed to a service registered in Eureka. Platform components (Redis, RabbitMQ, Eureka) are found through Cloud Map DNS (`*.metro.local`). Only the NAT has a public egress IP, which is the single address allowed in the MongoDB Atlas access list.
 
 ### Target architecture
 
@@ -145,11 +119,3 @@ docker compose up -d
 To run the same configuration the services use on AWS (PostgreSQL, Redis and RabbitMQ in containers), use `docker-compose.aws-local.yml` with `.env.aws-local.sample`.
 
 Tests: `mvn test`
-
-## Credits
-
-The application services were originally developed by the HCMURS team. The AWS infrastructure, CI/CD pipelines, containerization for ECS, observability and operations tooling were built by [datng17](https://github.com/datng17).
-
-## License
-
-Application code: Copyright © 2025 HCMURS. All rights reserved.
