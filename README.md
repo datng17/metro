@@ -15,7 +15,7 @@ A 9-service Spring Boot backend for a metro ticketing system, deployed to AWS wi
 |---|---|
 | Infrastructure as Code | Terraform with 10 reusable modules, remote S3 state with native locking, `tflint`, and `fmt`/`validate`/`plan` on every PR |
 | Compute | ECS Fargate cluster with 11 services; stateless services on Fargate Spot, gateway and Eureka on-demand |
-| Networking | VPC across 2 AZs with public, private-app and private-data subnets; ALB with ACM TLS; fck-nat instead of NAT Gateway |
+| Networking | VPC across 2 AZs with public, private-app and private-data subnets; ALB with ACM TLS; NAT Instance instead of NAT Gateway |
 | CI/CD | Per-service GitHub Actions pipelines triggered by path filters; build, push to ECR, Trivy scan, rolling deploy |
 | Security | GitHub OIDC with least-privilege roles (no access keys), SSM SecureStrings with write-only Terraform arguments (no secrets in state), RDS in subnets without internet access |
 | Reliability | ECS deployment circuit breaker with automatic rollback, ALB and container health checks, Cloud Map service discovery |
@@ -97,13 +97,13 @@ Bash equivalents (`scripts/*.sh`) work in Git Bash or WSL.
 | State | Approx. monthly (us-east-1) |
 |---|---|
 | Running | $110–130 |
-| Scaled to zero | about $35 (ALB, fck-nat, storage) |
+| Scaled to zero | about $35 (ALB, NAT Instance, storage) |
 
-Main savings: fck-nat instead of a managed NAT Gateway (about $25 less per month), Fargate Spot for stateless services, and a single small RDS instance hosting six logical databases.
+Main savings: NAT Instance instead of a managed NAT Gateway (about $25 less per month), Fargate Spot for stateless services, and a single small RDS instance hosting six logical databases.
 
 ## Design decisions
 
-- **fck-nat over NAT Gateway:** about one tenth of the cost. Runs in an Auto Scaling group of one that keeps the same ENI and Elastic IP, so egress recovers on its own and the Atlas allow-list never changes.
+- **NAT Instance over NAT Gateway:** about one tenth of the cost. Runs in an Auto Scaling group of one that keeps the same ENI and Elastic IP, so egress recovers on its own and the Atlas allow-list never changes.
 - **Eureka plus Cloud Map:** the application already relied on Eureka, so it stayed and no code changed. Cloud Map provides the stable DNS names that Eureka and the platform services need.
 - **Fargate Spot for stateless services only:** the gateway and Eureka are single points of entry and run on-demand. Everything else tolerates a 2-minute reclaim.
 - **OIDC instead of access keys:** short-lived credentials bound to the repository's immutable subject and the deployment branch. Nothing long-lived is stored in GitHub.
