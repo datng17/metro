@@ -8,7 +8,7 @@
 
 A 9-service Spring Boot backend for a metro ticketing system, deployed to AWS with Terraform, GitHub Actions and ECS Fargate. The infrastructure is fully reproducible from an empty account, deploys without stored AWS keys, and can be scaled to zero between uses.
 
-- **Live:** `https://metro-fe.vercel.app/` (may be scaled down to save cost)
+- **Live:** `https://metro-fe.vercel.app/`
 ## Highlights
 
 | Area | What was built |
